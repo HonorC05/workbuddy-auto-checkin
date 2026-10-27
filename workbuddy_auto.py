@@ -48,6 +48,13 @@ sys.path.insert(0, HERE)
 import wb_engine as E  # noqa: E402
 
 WB_DIR = os.path.expanduser("~/.workbuddy")
+# [本仓库修复] 首次运行时 ~/.workbuddy 尚不存在，会导致锁文件/日志/令牌回写全部静默失败，
+# 并误报"已有实例在运行"。此处先确保目录存在，并收紧权限（目录内存放长效令牌）。
+try:
+    os.makedirs(WB_DIR, exist_ok=True)
+    os.chmod(WB_DIR, 0o700)
+except Exception:
+    pass
 RT_FILE = os.path.join(WB_DIR, "checkin-rt.json")
 LOG_FILE = os.path.join(WB_DIR, "checkin.log")
 STATE_FILE = os.path.join(WB_DIR, "auto_state.json")

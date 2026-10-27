@@ -538,7 +538,7 @@ def main():
         sys.exit(1)
 
     print("=" * 60)
-    print("以下为你的长效令牌（refreshToken），请复制整段发给助手：")
+    print("以下为你的长效令牌（refreshToken），请复制整段保存好：")
     print("-" * 60)
     print(token)
     print("-" * 60)
