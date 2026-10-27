@@ -1,0 +1,33 @@
+# ===== 凭据与本地状态（绝不提交） =====
+auths/
+*.info
+rt.txt
+*.rt
+checkin-rt.json
+chat_model.json
+auto_state.json
+auto.lock
+
+# 这些路径默认在用户家目录 ~/.workbuddy，但以防万一也忽略
+.workbuddy/
+
+# ===== 日志 =====
+*.log
+
+# ===== Python 缓存 / 构建产物 =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# ===== 系统 / 编辑器 =====
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ===== 项目内部目录 =====
+.codebuddy/

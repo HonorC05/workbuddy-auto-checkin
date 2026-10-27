@@ -1,0 +1,15 @@
+[Unit]
+Description=WorkBuddy 全自动积分守护（每日 08:00 全量 + 每 2h 巡逻）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace
+ExecStart=/usr/bin/python3 /workspace/workbuddy_auto.py daemon
+Restart=always
+RestartSec=10
+User=root
+
+[Install]
+WantedBy=multi-user.target

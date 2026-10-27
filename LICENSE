@@ -1,0 +1,39 @@
+MIT License
+
+Copyright (c) 2026 xz0609 (workbuddy-checkin-ql)
+Copyright (c) 2026 L0NE-6 (WorkBuddy-Daily)
+Copyright (c) 2026 本仓库维护者 (workbuddy-auto)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------------
+第三方组件版权说明
+--------------------------------------------------------------------------------
+本仓库中的 wb_engine.py 为派生作品（derivative work），其原始代码版权归属如下，
+并以 MIT 许可证发布：
+
+  · xz0609/workbuddy-checkin-ql   https://github.com/xz0609/workbuddy-checkin-ql
+  · L0NE-6/WorkBuddy-Daily        https://github.com/L0NE-6/WorkBuddy-Daily
+        （xz0609/workbuddy-checkin-ql 本身基于 L0NE-6/WorkBuddy-Daily 修改）
+
+本仓库在原始代码基础上的修改与新增部分（workbuddy_auto.py、export_rt.py 及
+wb_engine.py 中的 [本仓库新增/增强] 标注段落）版权归本仓库维护者所有，同样以
+MIT 许可证发布。
+
+完整第三方来源与版权归属见仓库根目录 NOTICE 文件。
