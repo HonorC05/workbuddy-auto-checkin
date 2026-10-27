@@ -47,16 +47,16 @@
 ## 📁 Directory Structure
 
 ```
-workbuddy-auto/
-├── LICENSE            # MIT License (third-party copyright see NOTICE)
-├── NOTICE             # Third-party sources & copyright attribution
-├── README.md          # Chinese docs (default)
-├── README_EN.md       # English docs
-├── .gitignore         # Excludes credentials / caches / logs
-├── wb_engine.py       # [third-party derivative] core task engine (derived from the OSS projects below, with this repo's enhancements)
-├── workbuddy_auto.py  # [this repo original] unified entry / daemon scheduler / credential adapter
-├── export_rt.py       # [this repo original] long-lived token exporter (run on the Windows client machine)
-├── start.sh           # Idempotent launcher (daemon)
+workbuddy-auto-checkin/
+├── LICENSE              # MIT License (third-party copyright see NOTICE)
+├── NOTICE               # Third-party sources & copyright attribution
+├── README.md            # Chinese docs (Simplified)
+├── README_EN.md         # English docs
+├── .gitignore           # Excludes credentials / caches / logs
+├── wb_engine.py         # [third-party derivative] core task engine (derived from the OSS projects below, with this repo's enhancements)
+├── workbuddy_auto.py    # [this repo original] unified entry / daemon scheduler / credential adapter
+├── export_rt.py         # [this repo original] long-lived token exporter (run on the Windows client machine)
+├── start.sh             # Idempotent launcher (daemon)
 └── workbuddy-auto.service  # systemd unit (for bare-metal / VPS; backup when no systemd, e.g. sandbox)
 ```
 

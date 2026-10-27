@@ -44,15 +44,16 @@
 ## 📁 目录结构
 
 ```
-workbuddy-auto/
-├── LICENSE            # MIT 许可证（第三方版权归属见 NOTICE）
-├── NOTICE             # 第三方来源与版权归属声明
-├── README.md          # 本文件
-├── .gitignore         # 忽略凭据 / 缓存 / 日志
-├── wb_engine.py       # 【第三方派生】核心任务引擎（派生自下方开源项目，含本仓库增强）
-├── workbuddy_auto.py  # 【本仓库原创】统一入口 / 守护调度 / 凭据适配
-├── export_rt.py       # 【本仓库原创】长效令牌导出工具（Windows 客户端本机用）
-├── start.sh           # 幂等拉起脚本（守护进程）
+workbuddy-auto-checkin/
+├── LICENSE              # MIT 许可证（第三方版权归属见 NOTICE）
+├── NOTICE               # 第三方来源与版权归属声明
+├── README.md            # 本文件（简体中文）
+├── README_EN.md         # 英文文档
+├── .gitignore           # 忽略凭据 / 缓存 / 日志
+├── wb_engine.py         # 【第三方派生】核心任务引擎（派生自下方开源项目，含本仓库增强）
+├── workbuddy_auto.py    # 【本仓库原创】统一入口 / 守护调度 / 凭据适配
+├── export_rt.py         # 【本仓库原创】长效令牌导出工具（Windows 客户端本机用）
+├── start.sh             # 幂等拉起脚本（守护进程）
 └── workbuddy-auto.service  # systemd 单元（真机 / VPS 常驻用，沙箱无 systemd 时作备份）
 ```
 
