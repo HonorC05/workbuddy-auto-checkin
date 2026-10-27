@@ -1,5 +1,7 @@
 # WorkBuddy 全自动积分助手
 
+> 📖 语言 / Language: **[中文（默认）](./README.md)** · **[English](./README_EN.md)**
+
 > 一个面向 WorkBuddy / CodeBuddy 的**全自动积分领取**工具：每日签到、成长中心任务、
 > 互动玩法、开学季活动等 **35 项任务**一键跑完，并支持长效令牌、守护进程常驻、失败
 > 自动复查与新任务自适应。
@@ -43,7 +45,7 @@
 
 ```
 workbuddy-auto/
-├── LICENSE            # MIT 许可证（含第三方版权说明）
+├── LICENSE            # MIT 许可证（第三方版权归属见 NOTICE）
 ├── NOTICE             # 第三方来源与版权归属声明
 ├── README.md          # 本文件
 ├── .gitignore         # 忽略凭据 / 缓存 / 日志
@@ -142,8 +144,7 @@ sudo systemctl enable --now workbuddy-auto
 bash start.sh
 ```
 
-> 容器 / 沙箱环境若回收了进程，重新执行 `bash start.sh` 即可拉起（也可让助手执行
-> 「恢复自动签到」）。
+> 容器 / 沙箱环境若回收了进程，重新执行 `bash start.sh` 即可重新拉起。
 
 ### 引擎直跑（青龙江湖兼容 / 调试）
 

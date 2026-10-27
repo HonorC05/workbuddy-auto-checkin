@@ -3,7 +3,7 @@
 # =================================================================================
 #  WorkBuddy 长效令牌（refreshToken）独立导出脚本  [v1.0]  (export_rt.py)
 #
-#  本文件为本仓库原创（MIT，版权归本仓库维护者）。
+#  本文件为本仓库原创（MIT，版权归 HonorC05 (workbuddy-auto-checkin)）。
 #  功能：仅在「已安装 WorkBuddy 桌面客户端并已登录」的本机（Windows）运行，从客户端
 #  登录态文件解出 refreshToken 并打印到屏幕，供 workbuddy_auto.py 配置长效令牌使用。
 #  解密只在本机进行，脚本不联网、不上传任何数据。
@@ -22,7 +22,7 @@ WorkBuddy 长效令牌（refreshToken）独立导出脚本  [v1.0]
 
 用法：
     python export_rt.py
-然后把屏幕上打印出的那一长串 refreshToken 复制发给助手即可。
+然后把屏幕上打印出的那一长串 refreshToken 复制保存，用于配置 workbuddy_auto.py 的长效令牌。
 """
 import base64
 import hashlib

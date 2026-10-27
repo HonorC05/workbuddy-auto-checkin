@@ -5,8 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/workspace
-ExecStart=/usr/bin/python3 /workspace/workbuddy_auto.py daemon
+# 把下面的路径改成你实际的克隆目录（例如 /opt/workbuddy-auto 或 ~/workbuddy-auto-checkin）
+WorkingDirectory=/opt/workbuddy-auto
+ExecStart=/usr/bin/python3 /opt/workbuddy-auto/workbuddy_auto.py daemon
 Restart=always
 RestartSec=10
 User=root
