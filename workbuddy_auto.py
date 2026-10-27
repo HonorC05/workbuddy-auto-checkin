@@ -62,6 +62,7 @@ LOCK_FILE = os.path.join(WB_DIR, "auto.lock")
 
 FULL_HOUR = 8          # 每日全量触发小时（北京时间）
 PATROL_HOURS = 2       # 巡逻间隔（小时）：旅行到港即领 + 成长补领 + 玩法
+FULL_RETRY_SECONDS = 1800  # 全量失败/漏跑后的复查退避（秒）：登录态失效时避免频繁打接口
 
 BJT = datetime.timezone(datetime.timedelta(hours=8))
 _LOG_FP = None
@@ -224,10 +225,10 @@ def run_once(mode="auto"):
 # ---------------------------------------------------------------------------
 def daemon():
     """全自动守护：
-      · 每天 08:00 准点全量；未跑/跑失败则每分钟复查补拉，直到今天成功跑完。
+      · 每天 08:00 起全天可补全量；未跑/跑失败则按退避节奏复查补拉，直到今天成功跑完。
       · 全量完成后每 2h 巡逻（成长补领 + 旅行到港即领 + 盲盒/抽奖等玩法）。
     """
-    log("[daemon] 全自动守护启动：每日 %02d:00 全量 + 每 %dh 巡逻（失败/漏跑自动复查）" % (FULL_HOUR, PATROL_HOURS))
+    log("[daemon] 全自动守护启动：每日 %02d:00 起全天可补全量 + 每 %dh 巡逻（失败/漏跑自动复查）" % (FULL_HOUR, PATROL_HOURS))
     state = _read_json(STATE_FILE) or {}
     last_patrol = 0
     while True:
@@ -236,19 +237,28 @@ def daemon():
             today = now.date().isoformat()
             full_done = state.get("last_full") == today
 
-            # 每日全量：08:00 起的窗口内，今天还没成功跑过 → 触发（准点/漏跑/失败复查统一在此）
-            if not full_done and FULL_HOUR <= now.hour < FULL_HOUR + 15:
+            # 每日全量：08:00 起（含之后任何时刻）今天还没成功跑过 → 触发补拉。
+            # 失败/漏跑按退避节奏（FULL_RETRY_SECONDS）复查，登录态失效时不频繁打接口。
+            if not full_done and now.hour >= FULL_HOUR:
+                last_try = state.get("last_full_try") or 0
+                if time.time() - last_try < FULL_RETRY_SECONDS:
+                    time.sleep(60)
+                    continue
+                state["last_full_try"] = int(time.time())
+                _write_json(STATE_FILE, state)
                 summary = run_once("auto")
                 ok = summary is not None and "登录态失效" not in (summary.get("rest") or [])
                 if ok:
                     state["last_full"] = today
+                    state.pop("last_full_try", None)
                     _write_json(STATE_FILE, state)
                     last_patrol = time.time()
                     log("[daemon] 今日全量完成 ✓")
                 else:
-                    log("[daemon] 全量未成功（%s），60s 后复查再拉起" % (
-                        "登录态失效" if summary is None else "异常"))
-                time.sleep(120)
+                    log("[daemon] 全量未成功（%s），%d 分钟后复查再拉起" % (
+                        "登录态失效" if summary is None else "异常",
+                        FULL_RETRY_SECONDS // 60))
+                time.sleep(60)
                 continue
 
             # 巡逻：仅全量完成后进行，旅行到港即领 + 成长补领 + 盲盒/抽奖
