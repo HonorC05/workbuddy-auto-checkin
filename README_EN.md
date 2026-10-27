@@ -1,6 +1,6 @@
 # WorkBuddy Auto Check-in Assistant
 
-> 📖 Language: **[中文 (Chinese, default)](./README.md)** · **[English](./README_EN.md)**
+> 📖 Language: **[简体中文 (Simplified Chinese)](./README.md)** · **[English](./README_EN.md)**
 
 > A **fully automated points-collection** tool for WorkBuddy / CodeBuddy: daily check-in,
 > Growth Center tasks, interactive mini-games, back-to-school events and more — **35 tasks**

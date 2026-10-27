@@ -10,7 +10,8 @@
 #    · L0NE-6/WorkBuddy-Daily        https://github.com/L0NE-6/WorkBuddy-Daily
 #
 #  本仓库沿用 MIT 许可证，保留原作者版权声明；本仓库的修改与新增部分版权归
-#  本仓库维护者所有。完整许可文本见仓库根目录 LICENSE；第三方来源与版权归属
+#  HonorC05 (workbuddy-auto-checkin) 所有。完整许可文本见仓库根目录 LICENSE；
+#  第三方来源与版权归属
 #  见 NOTICE。
 #
 #  免责声明：本脚本为第三方逆向实现，与 WorkBuddy / 腾讯官方无关；接口可能随时
@@ -23,18 +24,18 @@ WorkBuddy 全能签到 · 单文件零依赖引擎（仅 Python 标准库）。
         → 8 项互动玩法 → 5 项开学季任务 + 大转盘抽奖 → 3 项小程序任务 → 自动领奖 → 中文报告推送
 
 用法：
-  python workbuddy_checkin.py            全流程（默认：签到 + 成长中心 + 玩法 + 开学季 + 推送）
-  python workbuddy_checkin.py growth     仅成长中心 + 互动玩法（不签到）
-  python workbuddy_checkin.py school     仅开学季活动 + 小程序任务
-  python workbuddy_checkin.py query      仅查询积分/用量/成长
-  python workbuddy_checkin.py refresh    仅刷新 Token（RT 轮换并回写 auths/*.json）
-  python workbuddy_checkin.py login      读取本机登录态，导入到 auths/<uid>.json（本地执行）
-  python workbuddy_checkin.py status     查签到状态（调试）
-  python workbuddy_checkin.py claim      仅领取签到（调试，幂等）
-  python workbuddy_checkin.py all        状态 + 领取（调试）
+  python wb_engine.py            全流程（默认：签到 + 成长中心 + 玩法 + 开学季 + 推送）
+  python wb_engine.py growth     仅成长中心 + 互动玩法（不签到）
+  python wb_engine.py school     仅开学季活动 + 小程序任务
+  python wb_engine.py query      仅查询积分/用量/成长
+  python wb_engine.py refresh    仅刷新 Token（RT 轮换并回写 auths/*.json）
+  python wb_engine.py login      读取本机登录态，导入到 auths/<uid>.json（本地执行）
+  python wb_engine.py status     查签到状态（调试）
+  python wb_engine.py claim      仅领取签到（调试，幂等）
+  python wb_engine.py all        状态 + 领取（调试）
 
 凭证管理：
-  - 本地导入：python workbuddy_checkin.py login 读取
+  - 本地导入：python wb_engine.py login 读取
       %LOCALAPPDATA%\\CodeBuddyExtension\\Data\\Public\\auth\\workbuddy-desktop-ai.info
     （新版桌面端；旧版为 workbuddy-desktop.info，JSON 格式），以 account.uid 的值作为
     文件名保存到脚本根目录 auths/<uid>.json。
@@ -1407,7 +1408,6 @@ def webchat(headers, conv_name, prompt, meta=None, model=None):
     """
     if not model:
         model = pick_chat_model()
-    """真实 AI 对话：建会话 → SSE 流式补全 → 返回 (conversationId, 回复文本)。"""
     if _budget_left() <= 10:
         return "", ""
     ccode, cbody = post(WORKBUDDY_BASE + "/console/webchat/conversations", headers,
@@ -2975,7 +2975,7 @@ def do_auto(mode="auto"):
     """多账号并行执行全流程，最后汇总推送中文报告。"""
     creds = load_creds()
     if not creds:
-        msg = "未找到任何凭证。请先在本机执行 python workbuddy_checkin.py login 生成 auths/<uid>.json。"
+        msg = "未找到任何凭证。请先在本机执行 python wb_engine.py login 生成 auths/<uid>.json。"
         print(f"⚠️  {msg}")
         notify_user("WorkBuddy 签到", f"⚠️ {msg}")
         return 2

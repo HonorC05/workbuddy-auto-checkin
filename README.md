@@ -1,6 +1,6 @@
 # WorkBuddy 全自动积分助手
 
-> 📖 语言 / Language: **[中文（默认）](./README.md)** · **[English](./README_EN.md)**
+> 📖 语言 / Language: **[简体中文](./README.md)** · **[English](./README_EN.md)**
 
 > 一个面向 WorkBuddy / CodeBuddy 的**全自动积分领取**工具：每日签到、成长中心任务、
 > 互动玩法、开学季活动等 **35 项任务**一键跑完，并支持长效令牌、守护进程常驻、失败
