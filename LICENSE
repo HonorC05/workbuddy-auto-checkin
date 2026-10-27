@@ -22,18 +22,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
---------------------------------------------------------------------------------
-第三方组件版权说明
---------------------------------------------------------------------------------
-本仓库中的 wb_engine.py 为派生作品（derivative work），其原始代码版权归属如下，
-并以 MIT 许可证发布：
-
-  · xz0609/workbuddy-checkin-ql   https://github.com/xz0609/workbuddy-checkin-ql
-  · L0NE-6/WorkBuddy-Daily        https://github.com/L0NE-6/WorkBuddy-Daily
-        （xz0609/workbuddy-checkin-ql 本身基于 L0NE-6/WorkBuddy-Daily 修改）
-
-本仓库在原始代码基础上的修改与新增部分（workbuddy_auto.py、export_rt.py 及
-wb_engine.py 中的 [本仓库新增/增强] 标注段落）版权归本仓库维护者所有，同样以
-MIT 许可证发布。
-
-完整第三方来源与版权归属见仓库根目录 NOTICE 文件。
