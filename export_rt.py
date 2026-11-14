@@ -31,6 +31,13 @@ import os
 import re
 import sys
 
+# Windows 控制台默认 GBK：统一 UTF-8 输出，避免中文提示触发 UnicodeEncodeError。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 try:
     import ctypes
     from ctypes import wintypes
@@ -542,7 +549,7 @@ def main():
     print("-" * 60)
     print(token)
     print("-" * 60)
-    print("（令牌等同账号钥匙，仅用于本助手在本机自动签到，请勿泄露给他人。）")
+    print("（令牌等同账号钥匙，仅用于本项目在本机自动签到，请勿泄露给他人。）")
 
 
 if __name__ == "__main__":

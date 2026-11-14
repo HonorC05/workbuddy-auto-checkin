@@ -86,6 +86,7 @@ WorkBuddy 全能签到 · 单文件零依赖引擎（仅 Python 标准库）。
 
 import base64
 import hashlib
+import http.client
 import json
 import math
 import os
@@ -100,6 +101,14 @@ import urllib.error
 import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
+
+# 跨平台：Windows 控制台默认 GBK，日志含中文/emoji 时 print 会抛 UnicodeEncodeError。
+# 统一 UTF-8 + 降级替换，保证 win / mac / linux / 沙箱输出一致。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AUTH_DIR = os.path.join(BASE_DIR, "auths")
@@ -191,9 +200,30 @@ TASK_NAME_CN = {
     "Sequential_Tasks_5": "小程序GLM5.2",
     "Sequential_Tasks_6": "小程序对话10次",
     "Sequential_Tasks_7": "PC灵感功能",
+    # —— 上游 v3.42~v3.50 新增任务码（合入 wb_upstream.py）——
+    "skill_share": "分享技能给好友",
+    "campaign": "小程序活动任务",
+    "campaign_starbucks_2026": "星巴克协作活动",
+    "campaign_reporter_2026": "记者节福利活动",
 }
 
 KNOWN_TASK_CODES = set(TASK_NAME_CN)
+
+# 「每日核心任务」码：历史上每天稳定下发、需脚本自动完成的成长任务。
+# 只用于任务集健康检查（判断平台是否整批下线/迁移每日任务），不参与领奖判定。
+# 对齐上游 L0NE-6/WorkBuddy-Daily v3.46 的「任务未下发守卫」与 v3.50 三口径说明：
+# 服务端改版时这些码会整批从桌面 /v2 口径消失，脚本必须能识别并明确告警，
+# 而不是把「全部跳过」误报成「成长任务全部完成」。
+# 只放「每日重复型」任务；一次性新手任务（RichMeow_Chat / Library_read /
+# skill_share / first_buddy / 公众号 等）不算，避免改版后残留几个新手任务时
+# 误把「每日任务整批下线」判成「部分未下发」。
+CORE_DAILY_CODES = frozenset({
+    "create_canvas", "playbook_prompt", "automation_1",
+    "Expert_team_use_3", "chat_5", "expert_5", "template_5",
+    "Model_chat_GLM5.2", "skill_1", "Buddy_App", "Buddy_App_QQ",
+    "black_cat", "Hp_Appearance", "Expert_lighthouse",
+    "workstation_expert",
+})
 
 # 不自动接单的任务：接了也永远完不成（需真实人工行为），按用户要求跳过以免污染进度
 SKIP_AUTO_ACCEPT = {"Expert_Philanthropy"}  # 公益专家：需真实捐款，人工环节
@@ -714,6 +744,12 @@ def _post_stream(url, headers, payload, timeout=CHAT_TIMEOUT):
     """SSE 流式 POST：阻塞读完整流后返回 (http码, 原始文本)。失败不重试。
 
     服务端在对话结束后会关闭连接，resp.read() 自然返回；超时参数兜底防挂死。
+
+    [修复] AgentOS / 云盒子的 SSE 常以 chunked + 心跳收尾：服务端发完 end_turn
+    等完整事件后并不干净关流，resp.read() 会抛 http.client.IncompleteRead。
+    此时 e.partial 是服务端「已经真实返回」的事件流（含 end_turn / isFinalStop），
+    不能丢弃并误报「网络不可达」。据实返回 (状态码, partial)，由调用方按结构化
+    判据自行确认——判据不放宽、不伪造、不冒充设备。
     """
     if _budget_left() <= 5:
         return CODE_BUDGET_OUT, ""
@@ -722,7 +758,14 @@ def _post_stream(url, headers, payload, timeout=CHAT_TIMEOUT):
     ctx = ssl.create_default_context()
     try:
         with urllib.request.urlopen(req, timeout=max(5, min(timeout, _budget_left())), context=ctx) as resp:
-            return resp.status, resp.read().decode("utf-8", "replace")
+            status = resp.status
+            try:
+                return status, resp.read().decode("utf-8", "replace")
+            except http.client.IncompleteRead as e:
+                partial = (e.partial or b"").decode("utf-8", "replace")
+                if not partial:
+                    raise
+                return (status if 200 <= status < 300 else 200), partial
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
     except Exception as e:
@@ -1767,15 +1810,13 @@ def t_library(headers, uid, nick, log):
     log("体验资料库: %s" % prog(headers, "Library_read", fresh=True)[0])
 
 
-# [本仓库增强] 对话任务默认走免费模型（pick_chat_model），并支持目标模型兜底。
-def t_chat_n(headers, uid, nick, log, code, n, prompts, target_model="glm-5.2", force_model=None):
+# [本仓库增强] 免费模型优先：所有对话任务一律先免费，失败/被拒才回退指定模型。
+def t_chat_n(headers, uid, nick, log, code, n, prompts, target_model="glm-5.2"):
     """通用聊天任务：chat_5 / Model_chat_GLM5.2（真实 AI 对话 + 遥测）。
 
-    自适应两遍策略：
-      1) 先用免费/指定模型跑；
-      2) 若进度未达标（说明该任务强制特定真实模型），自动改用 target_model 兜底，
-         确保"免费能过就免费、强制模型就老实用目标模型"，首启与巡检都保完成。
-    force_model 非空时直接用该模型（如 GLM-5.2 模型对话强制 glm-5.2），跳过免费尝试。
+    统一两遍策略（所有任务先都用免费模型）：
+      1) 一律先用 pick_chat_model()（当前免费模型 hy3）真实跑一轮；
+      2) 仅当进度未达标（服务端强制指定模型 / 免费模型被拒）才改用 target_model 兜底。
     上报事件仍按任务要求写模型名（任务判据不依赖真实模型）。
     """
     def _pass(model):
@@ -1793,22 +1834,23 @@ def t_chat_n(headers, uid, nick, log, code, n, prompts, target_model="glm-5.2", 
                 report_events(headers, uid, nick, evs)
             _nap(4)
 
-    first = force_model or pick_chat_model()
-    log("%s: 先用模型 %s 尝试（目标模型 %s）" % (task_cn(code), first, target_model))
-    _pass(first)
+    free = pick_chat_model()
+    log("%s: 先用免费模型 %s 尝试（失败才回退 %s）" % (task_cn(code), free, target_model))
+    _pass(free)
     st, cur, tgt = prog(headers, code, fresh=True)
-    if _pending(st) and (cur or 0) < (tgt or 0) and first != target_model:
-        log("%s: %s 未达标(%s/%s)，回退目标模型 %s 兜底" % (task_cn(code), first, cur, tgt, target_model))
+    if _pending(st) and (cur or 0) < (tgt or 0) and free != target_model:
+        log("%s: 免费模型 %s 未达标(%s/%s)，回退指定模型 %s" % (
+            task_cn(code), free, cur, tgt, target_model))
         _pass(target_model)
         st, cur, tgt = prog(headers, code, fresh=True)
     log("%s: %s %s/%s" % (task_cn(code), st, cur, tgt))
 
 
 def t_glm52(headers, uid, nick, log):
-    """GLM-5.2 模型对话 ×1（真实走 glm-5.2，保任务判定）+ 和AI聊天5次（免费模型）。"""
-    log("对话模型策略: 真实调用优先 %s（免费）" % pick_chat_model())
+    """GLM-5.2 模型对话 ×1 + 和AI聊天5次：两者一律先免费模型，失败才回退指定模型。"""
+    log("对话模型策略: 所有任务先免费模型 %s，失败才回退指定模型" % pick_chat_model())
     t_chat_n(headers, uid, nick, log, "Model_chat_GLM5.2", 1,
-             ["你好，请介绍一下你自己"], force_model="glm-5.2")
+             ["你好，请介绍一下你自己"], target_model="glm-5.2")
     t_chat_n(headers, uid, nick, log, "chat_5", 5,
              ["你好", "今天天气怎么样？", "1+1等于几？", "Python是什么？", "推荐一本好书"])
 
@@ -2109,6 +2151,64 @@ def mp_prog(headers, code):
             pr = t.get("progress") or {}
             return t.get("accept_status", ""), pr.get("current"), pr.get("target")
     return None, None, None
+
+
+def probe_task_scopes(headers, log=None):
+    """只读探测成长任务三套口径，识别服务端任务集改版（对齐上游 v3.50）。
+
+    平台把成长任务拆成三套、且互不互为超集：
+      · 桌面   /v2/activity/growth/tasks   —— 可领奖的成长任务（脚本主口径）
+      · 小程序 /v2/activity/growth/tasks   —— 需 X-Client-Platform: miniprogram
+      · 等级   /activity/growth/tasks      —— 段位里程碑，字段为 code/status/
+        level_name，status=available，不可领奖，绝不能混入完成率或领奖逻辑。
+
+    返回 dict：各口径行数 + 桌面口径命中的「每日核心任务码」数量 + 是否判定
+    「每日任务整批下线」。只做只读 GET + 打印告警，不接单、不领奖、不上报。
+    """
+    out = {"desktop_rows": 0, "mp_rows": 0, "level_rows": 0,
+           "core_hit": 0, "core_total": len(CORE_DAILY_CODES), "degraded": False}
+    try:
+        # 桌面口径（复用缓存，避免额外请求）
+        dt = fetch_tasks(headers, max_age=0)
+        out["desktop_rows"] = len(dt)
+        dcodes = {t.get("task_code") for t in dt if isinstance(t, dict)}
+        out["core_hit"] = len(dcodes & CORE_DAILY_CODES)
+
+        # 小程序口径（mp 头，只读）
+        mt = mp_fetch_tasks(headers)
+        out["mp_rows"] = len(mt)
+
+        # 等级口径（段位里程碑，只数行，字段与成长任务不同）
+        c, b = get(WORKBUDDY_BASE + "/activity/growth/tasks", headers)
+        if 200 <= c < 300:
+            lt = dig(b, "tasks") or []
+            if isinstance(lt, list):
+                out["level_rows"] = len([t for t in lt if isinstance(t, dict)])
+
+        # 判定：桌面口径里每日核心任务「几乎全部缺席」（命中率 ≤ 25%），
+        # 且桌面总行数明显偏少（历史上约 20 项；改版后只剩几个一次性新手任务）
+        # → 判为「整批下线」。用比例而非硬性 ==0，对平台保留少量每日任务的
+        # 轮换/灰度场景也鲁棒，不会漏报。
+        ratio = out["core_hit"] / out["core_total"] if out["core_total"] else 1.0
+        out["degraded"] = (ratio <= 0.25 and out["desktop_rows"] <= 8)
+
+        if log:
+            log("🔎 任务集体检: 桌面%d / 小程序%d / 等级%d 行；每日核心任务命中 %d/%d" % (
+                out["desktop_rows"], out["mp_rows"], out["level_rows"],
+                out["core_hit"], out["core_total"]))
+            if out["degraded"]:
+                log("⚠️ 成长任务集变化: 桌面 /v2 口径未下发每日任务"
+                    "（当前仅 %d 项，多为一次性新手任务且已完成）。"
+                    "这是服务端任务改版/迁移，不是脚本漏领；"
+                    "本轮跳过属正常，签到与已领奖励不受影响。"
+                    "脚本将按各口径实际下发的任务继续自动完成与领奖。" % out["desktop_rows"])
+            elif out["core_hit"] < out["core_total"]:
+                log("ℹ️ 桌面口径有 %d 项每日核心任务本轮未下发（可能已下线/轮换），按未下发守卫跳过" %
+                    (out["core_total"] - out["core_hit"]))
+    except Exception as e:
+        if log:
+            log("🔎 任务集体检异常（%s: %s），不影响正常领取" % (type(e).__name__, e))
+    return out
 
 
 def mp_accept(headers, code):
@@ -2706,7 +2806,8 @@ def run_checkin(headers, endpoint):
         return 1, {"result": "NO_SESSION",
                    "report": "登录态已失效（HTTP %s），请重新 login 导入" % scode}
     if not (200 <= scode < 300):
-        return 1, {"result": "ERROR",
+        # [上游合入层] 附带原始响应，供分钟级补签队列判定 500+10001+"稍后重试"
+        return 1, {"result": "ERROR", "_http": scode, "_raw": sbody,
                    "report": "签到接口返回异常（HTTP %s），请稍后重试" % scode}
 
     status = sbody if isinstance(sbody, dict) else {}
@@ -2754,9 +2855,10 @@ def run_checkin(headers, endpoint):
 
     if isinstance(cbody, dict) and ("code" in cbody or "msg" in cbody):
         msg = cbody.get("msg") or ("code %s" % cbody.get("code"))
-        return 1, {"result": "ERROR", "report": "领取失败：%s（HTTP %s）" % (msg, ccode)}
+        return 1, {"result": "ERROR", "_http": ccode, "_raw": cbody,
+                   "report": "领取失败：%s（HTTP %s）" % (msg, ccode)}
 
-    return 1, {"result": "UNKNOWN",
+    return 1, {"result": "UNKNOWN", "_http": ccode, "_raw": cbody,
                "report": "未识别的领取返回，请检查接口：%s" % json.dumps(cbody, ensure_ascii=False)[:200]}
 
 
@@ -2793,6 +2895,30 @@ def run_full(uin, session, mode="auto"):
     uid = str(account.get("uid") or "")
     nick = str(account.get("nickname") or uid)
 
+    # ---- [上游合入层] 账号态识别 / 积分基线 / 签到补签队列 ----
+    # 独立模块 wb_upstream.py，整段 try/except 隔离；任何异常都不影响既有链路。
+    # 设置 WORKBUDDY_UPSTREAM=0 可整体关闭，等价于回到合入前的行为。
+    _U = None
+    _up = None
+    try:
+        import wb_upstream as _U
+        if _U.UPSTREAM_ON:
+            _up = {"headers": headers, "wb_h": wb_h, "mp_h": mp_headers(headers),
+                   "uid": uid, "nick": nick, "log": log, "mode": mode,
+                   "endpoint": endpoint, "summary": summary}
+            _guard = _U.preflight(wb_h, log)
+            if _guard:
+                summary["rest"] = [_guard]
+                return summary
+            _before, _ = _U.credits_remain(wb_h)
+            summary["credits_before"] = _before
+            if mode != "query":
+                _U.sign_retry_check(_up)
+    except Exception as e:
+        log("上游合入层初始化异常（%s: %s），本轮沿用既有链路" % (type(e).__name__, str(e)[:60]))
+        _U = None
+        _up = None
+
     # 1. 查询（积分套餐 / 用量 / 成长概况）
     try:
         credits = query_credits(wb_h)
@@ -2818,6 +2944,12 @@ def run_full(uin, session, mode="auto"):
             if out.get("result") == "NO_SESSION":
                 summary["rest"] = ["登录态失效"]
                 return summary
+            # [上游合入层] 命中 500+10001+"稍后重试" 时排队，第 10/40 分钟自动补签
+            if _U is not None and _up is not None:
+                try:
+                    _U.sign_retry_maybe_queue(_up, out)
+                except Exception as e:
+                    log("签到补签排队异常（%s: %s）" % (type(e).__name__, str(e)[:60]))
         except Exception as e:
             summary["checkin"] = "签到异常（%s: %s）" % (type(e).__name__, e)
             log("❌ %s" % summary["checkin"])
@@ -2825,6 +2957,8 @@ def run_full(uin, session, mode="auto"):
     # 3. 成长任务 + 互动玩法（auto / growth）
     if mode in ("auto", "growth"):
         log("☁️ ── 成长任务 ──")
+        # 任务集体检（只读探测三套口径，识别服务端任务集改版，对齐上游 v3.50）
+        scope = probe_task_scopes(wb_h, log)
         steps = (
             ("接单", lambda: t_accept_all(wb_h, uid, nick, log)),
             ("桌面任务", lambda: t_desktop_fingerprint(wb_h, uid, nick, log)),
@@ -2875,20 +3009,60 @@ def run_full(uin, session, mode="auto"):
 
         t_unknown_tasks(wb_h, uid, nick, log)
 
+        # [上游合入层] 新增能力：每日活跃 / 一次性福利 / 分享技能 / 小程序活动 /
+        # 小程序连续任务 2~7 / 会话清理 / 智能补签诊断。逐项异常隔离，不影响既有流程。
+        if _U is not None and _up is not None:
+            try:
+                _U.run_extras(_up)
+            except Exception as e:
+                log("上游新增能力异常（%s: %s）" % (type(e).__name__, str(e)[:80]))
+
         # 自动领奖 + 终态统计
         log("🎁 ── 领奖 ──")
         try:
             claim_all(wb_h, log)
         except Exception as e:
             log("领奖异常（%s: %s）" % (type(e).__name__, e))
+        # [上游合入层] 完成≠到账：按 progress 达标补领 + claimed_at 回读确认，
+        # 覆盖 claim_all 只看 accept_status=="completed" 的漏领场景。
+        if _U is not None and _up is not None:
+            try:
+                _U.claim_ready_tasks(_up)
+            except Exception as e:
+                log("达标补领异常（%s: %s）" % (type(e).__name__, str(e)[:80]))
         try:
             tasks = fetch_tasks(wb_h, max_age=0)
-            done = sum(1 for t in tasks if t.get("accept_status") in ("claimed", "completed"))
-            rest = [task_cn(t.get("task_code", "")) for t in tasks
-                    if t.get("accept_status") not in ("claimed", "completed")]
+            # [上游合入层] 终态口径对齐 v3.49：只认 claimed / claimed=true /
+            # 本轮已确认回执；completed 但未领奖仍算「未完成、需补领」。
+            done, rest = (sum(1 for t in tasks if t.get("accept_status") in ("claimed", "completed")),
+                          [task_cn(t.get("task_code", "")) for t in tasks
+                           if t.get("accept_status") not in ("claimed", "completed")])
+            if _U is not None and _up is not None:
+                try:
+                    done, rest_codes = _U.summarize_completion(tasks, _up.get("_receipts"))
+                    rest = [task_cn(c) for c in rest_codes]
+                except Exception:
+                    pass
             summary.update({"done": done, "total": len(tasks), "rest": rest})
-            log("🏁 成长任务: 完成%s/%s，剩余: %s" % (
-                done, len(tasks), "、".join(rest) if rest else "无"))
+            # 口径清晰化（对齐上游 v3.50）：明确这是「桌面 /v2 成长任务」完成率，
+            # 不等于账号全部任务总数；同时列出三套口径任务行数，避免把
+            # 「桌面 5/5」误解成「账号只有 5 项任务」。
+            sc = scope if isinstance(scope, dict) else {}
+            scope_note = ("" if not sc else
+                          "（任务行 桌面%d/小程序%d/等级%d）" % (
+                              sc.get("desktop_rows", 0), sc.get("mp_rows", 0),
+                              sc.get("level_rows", 0)))
+            log("🏁 桌面成长任务: 完成%s/%s%s，剩余: %s" % (
+                done, len(tasks), scope_note, "、".join(rest) if rest else "无"))
+            if sc.get("degraded"):
+                log("   ↳ 注: 每日任务由服务端整批下线，本轮「X/Y」仅统计当前下发的"
+                    "一次性任务；非漏领，跳过属正常")
+            # [上游合入层] 7 天内到期提醒 + 积分增量 + 可选推送
+            if _U is not None and _up is not None:
+                try:
+                    _U.finalize(_up, tasks)
+                except Exception as e:
+                    log("上游终态处理异常（%s: %s）" % (type(e).__name__, str(e)[:80]))
         except Exception as e:
             log("终态统计异常（%s: %s）" % (type(e).__name__, e))
 

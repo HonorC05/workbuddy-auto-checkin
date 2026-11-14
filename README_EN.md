@@ -31,16 +31,20 @@
 | Interactive games (8) | ✅ | Lottery, blind box, cat traveler, streak exchange, catch-up, Buddy info, badges, gift compensation |
 | Back-to-school (5) | 4 auto + big wheel | Share, AI chat, desktop chat, B2S expert, big-wheel lottery |
 | Mini-program tasks (3) | ✅ | Mini-program chat, campus day, unknown mini-program auto-adapt |
-| Chat tasks | ✅ free-first | **Prefers free models** (e.g. `hy3`); falls back to the cheapest if none free; forced-model tasks auto-return to target model |
+| Client-specific tasks | ✅ fully automated | Mini-program / PC / App criteria all go through **official client channels + official event families + a real cloud session**, all on by default — works without your PC |
+| Chat tasks | ✅ free-first | **Every task tries a free model first** (e.g. `hy3`); only on failure/rejection does it fall back to the task's required model |
+| Cross-platform | ✅ out of the box | Same command on Windows / macOS / Linux / sandbox; stdlib only, no bash / systemd dependency |
 
 **Implemented "unattended" capabilities:**
 
 - 🔑 **Long-lived token**: `refreshToken` auto-rotates every run — configure once, use forever.
-- 🤖 **Resident daemon**: daily **08:00 full run** + patrol every **2 hours** (claim on cat
-  arrival + growth catch-up + games), **auto retry on miss/failure**, auto-restart on crash.
+- 🤖 **Two-layer watchdog**: `python start.py` spawns watch + daemon in the background; daily
+  **08:00 full run** + patrol every **2 hours**, **auto retry on miss/failure**, respawn within 15s.
 - 🆕 **New-task self-adaptation**: uncovered tasks get a three-way fallback (expert chain /
   chat / generic activation) — newly launched tasks are recognized and attempted without code changes.
-- 💡 **Points-saving chat**: all "launch a chat" growth tasks default to free models, minimizing point spend.
+- 💡 **Points-saving chat**: every chat task tries a free model first and only falls back when needed.
+- 🗂️ **Task catalog**: `python task_catalog.py` lists every task grouped by daily / one-off /
+  limited event / sequential / games / catch-up / account & stats, with implementation pointers.
 
 ---
 
@@ -54,10 +58,13 @@ workbuddy-auto-checkin/
 ├── README_EN.md         # English docs
 ├── .gitignore           # Excludes credentials / caches / logs
 ├── wb_engine.py         # [third-party derivative] core task engine (derived from the OSS projects below, with this repo's enhancements)
+├── wb_upstream.py       # [this repo original] upstream capability layer (15 missing features, can be disabled)
 ├── workbuddy_auto.py    # [this repo original] unified entry / daemon scheduler / credential adapter
+├── start.py             # [this repo original] cross-platform unattended launcher (win / mac / linux)
+├── task_catalog.py      # [this repo original] task catalog index (locate code by category)
 ├── export_rt.py         # [this repo original] long-lived token exporter (run on the Windows client machine)
-├── start.sh             # Idempotent launcher (daemon)
-└── workbuddy-auto.service  # systemd unit (for bare-metal / VPS; backup when no systemd, e.g. sandbox)
+├── start.sh             # Unix-only fallback launcher (bash)
+└── workbuddy-auto.service  # systemd unit (for bare-metal / VPS)
 ```
 
 ---
@@ -77,6 +84,29 @@ Enhancements added by this repository (free-model selection, expert-experience t
 hot-skill CLOUD-domain fix, chat-task target-model fallback, three-way new-task fallback, etc.)
 are marked with `[本仓库新增/增强]` inside `wb_engine.py`. Full details in
 [`NOTICE`](./NOTICE); license text in [`LICENSE`](./LICENSE).
+
+---
+
+## 🧩 Upstream Capability Layer (wb_upstream.py)
+
+After a feature-by-feature comparison against upstream `L0NE-6/WorkBuddy-Daily`
+(v3.42~v3.50) and `xz0609/workbuddy-checkin-ql`, all capabilities missing locally are
+implemented in a single `wb_upstream.py`; the core engine only attaches them with
+exception isolation. Merged capabilities include:
+
+- Account-state detection (enterprise accounts / restricted `11140` / channel block `11-128`)
+- Growth-task snapshot across three endpoints + "not issued" guard, claim read-back confirmation, ready-task catch-up
+- `accept` settlement fix, terminal-state correction, expiry reminders, **point delta statistics**
+- Minute-level check-in retry queue, smart makeup-checkin candidates, one-off compensation / newcomer gift
+- Mini-program campaign tasks (Starbucks / Reporter's Day), real `skill_share` channel, sequential tasks 2~7
+- Daily activity reporting, conversation-count cleanup, multi-channel push (Bark / ServerChan / DingTalk / WeCom / WxPusher)
+
+All additions are on by default and wrapped in per-item `try/except`, so a single failure never
+affects the existing check-in and claim flow. Campaign sessions only send tokens to trusted
+official HTTPS domains; state files never store credentials / UID / phone numbers.
+Set `WORKBUDDY_UPSTREAM=0` to disable the whole layer.
+
+> Read-only self-check (no task acceptance / claiming / reporting): `python wb_upstream.py probe`
 
 ---
 
@@ -110,6 +140,11 @@ pip install cryptography   # only needed when using export_rt.py
    ```
 
    > The token auto-rotates and rewrites this file on every run, so configure once for long-term use.
+   >
+   > Privacy: `export_rt.py` only reads the **current local user's** client login state;
+   > paths are derived from `LOCALAPPDATA` / `XDG_DATA_HOME` / `~` environment variables.
+   > No code or docs contain any real username, absolute path, UID, email or token.
+   > Decryption happens locally only — no network, no upload.
 
 ### Option 2: Desktop client login state (engine native format)
 
@@ -123,6 +158,23 @@ python wb_engine.py login
 ---
 
 ## 🖥️ Usage
+
+### Cross-platform, out of the box (recommended)
+
+One command on Windows / macOS / Linux / sandbox; stdlib only, no bash / nohup / systemd:
+
+```bash
+python start.py             # spawn two-layer watchdog in background (idempotent)
+python start.py status      # show status
+python start.py stop        # stop
+python start.py once        # run one full round in the foreground
+python start.py foreground  # stay in foreground (hand over to systemd / Task Scheduler)
+```
+
+`watch` self-checks every 15s and respawns `daemon` if it dies; `daemon` itself does the
+daily 08:00 full run + 2h patrol + failure retry + crash self-heal. On Windows use Task
+Scheduler at logon with `python start.py foreground`; on a Linux host use the shipped
+`workbuddy-auto.service`.
 
 ### Unified entry (recommended)
 
@@ -174,24 +226,77 @@ python wb_engine.py refresh   # refresh token only
 | Variable | Default | Description |
 |---|---|---|
 | `WORKBUDDY_BUDGET_SECONDS` | `900` | Per-round request time budget (seconds) |
+| `WORKBUDDY_RT` | empty | Provide refreshToken via env var without writing it to disk (CI / containers) |
+| `WORKBUDDY_STATE_DIR` | `~/.workbuddy` | State & lock dir (auto-created cross-platform, mode 0700) |
+| `WORKBUDDY_UPSTREAM` | `1` | Set `0` to disable the whole upstream capability layer |
+| `WORKBUDDY_UPSTREAM_BUDGET` | `300` | Per-round time box for the upstream layer (seconds) |
+| `WORKBUDDY_SKIP_DESKTOP_SIM` | `false` | Set `true` to disable client-specific official-event / cloud-session criteria (on by default) |
+| `WORKBUDDY_TASKS` | empty | Only run whitelisted tasks (comma-separated, for debugging) |
+| `WORKBUDDY_SKIP_TASKS` | empty | Skip blacklisted tasks (comma-separated) |
+| `WORKBUDDY_MP_GAP` | `45` | Mini-program event gap (seconds), human-like pacing to avoid risk control |
+| `WORKBUDDY_UPSTREAM_NOTIFY` | `false` | Set `true` to enable multi-channel push (configure channels first) |
 | `RANDOM_SIGNIN` | `false` (in daemon) | Multi-account random delay toggle |
 | `MAX_RANDOM_DELAY` | `3600` | Max per-account random delay (seconds) |
 | `WORKBUDDY_NO_SCHOOL` | `false` | Set `true` to skip back-to-school events |
 
 ---
 
-## 💡 Points-saving Chat Notes
+## 💡 Points-saving Chat (free model first)
 
-The **real chat** for chat-type tasks (chat 5 times, night-owl, expert squad, GLM-5.2 model
-chat, etc.) defaults to the current free model (currently `hy3`). If a task's server forces a
-specific model (e.g. `GLM-5.2 model chat` must use `glm-5.2`), the script auto-falls back to
-the target model to ensure completion.
+**Every chat-type task tries a free model first** (currently `hy3`) — including tasks that
+nominally require a specific model, such as `GLM-5.2 model chat`. Only when the free-model
+round does not reach the required progress, or is rejected by the server, does it fall back
+to the task's required model for a second round. Zero point spend whenever possible, with no
+loss of forced-model task credit.
 
 Free models can change with the platform — edit `~/.workbuddy/chat_model.json`:
 
 ```json
 {"free": ["hy3"], "cheap": ["glm-5.2"]}
 ```
+
+---
+
+## 🗂️ Task Catalog
+
+`task_catalog.py` aggregates every task from the running code and groups it; any new task
+without a category is listed explicitly so the index never drifts from the implementation:
+
+```bash
+python task_catalog.py                # print every category
+python task_catalog.py --find chat    # search by code / name / category / client
+python task_catalog.py --client       # only tasks requiring a specific client (MP / PC / App)
+```
+
+| Category | Meaning | Main implementation |
+|---|---|---|
+| Daily | Check-in, daily growth, activity heatmap | `run_full` / `run_daily_activity` |
+| One-off | Newcomer tasks, compensation / gift, share channel | `run_benefits` / `run_skill_share` |
+| Limited events | Starbucks / Reporter's Day / back-to-school | `run_campaigns` / `t_school` |
+| Sequential | Mini-program Sequential 1~7 | `run_sequential` |
+| Games | Travel / lottery / blind box / wheel / badges | `run_full` games section |
+| Catch-up | Retry queue, ready-task catch-up, not-issued guard | `sign_retry_*` / `claim_ready_tasks` |
+| Account & stats | Account state, point delta, terminal state, push | `preflight` / `finalize` |
+
+---
+
+## 📱 Client-specific Tasks & Account Safety
+
+Some tasks only light up when a specific client (mini-program / PC desktop / App) is used.
+This project **automates all of them by default** via three legitimate paths — no device
+fingerprint forgery, no fabricated client-id counting:
+
+1. **Official client channels**: send the task's required `X-Client-Platform` / UA headers;
+2. **Official event families**: report the server-defined `eventCode` values (e.g.
+   `playbook_prompt_send`, `expert_actual_use`, `chat_request_send`) with human-like pacing;
+3. **Real cloud session**: App tasks actually run one AgentOS conversation; only a structured
+   `end_turn` counts as success.
+
+All calls use the account's own real token against official APIs. Claims are confirmed by
+reading back `claimed_at` (idempotent, no duplicate POST); event gaps, failure backoff and a
+per-round time box are enforced, and any anomaly stops the round and retries later — avoiding
+high-frequency risk-control triggers. Tasks that genuinely require human action (e.g. real
+donations, following an official account) are skipped by the existing rule and **never forged**.
 
 ---
 

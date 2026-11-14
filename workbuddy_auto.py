@@ -20,7 +20,7 @@ WorkBuddy 全自动积分助手 —— 统一入口 / 守护调度 / 凭据适�
   · 本文件只负责「凭据适配 + 守护调度 + 日志 + 单实例锁」，不重复实现任务逻辑。
 
 凭据（二选一，优先顺序）：
-  1) ~/.workbuddy/checkin-rt.json  -> {"refresh_token": "..."}（本助手导出的长效令牌）
+  1) ~/.workbuddy/checkin-rt.json  -> {"refresh_token": "..."}（本仓库 export_rt.py 导出的长效令牌）
   2) auths/*.json                  -> 引擎原生格式（桌面客户端 login 导出）
 
 用法：
@@ -35,9 +35,27 @@ import os
 import sys
 import time
 import json
-import fcntl
 import argparse
 import datetime
+
+# 跨平台单实例锁：Unix 用 fcntl（内核锁，进程退出自动释放），Windows 用 msvcrt；
+# 两者都不可用时退化为 O_EXCL 原子锁文件 + 陈旧锁自动清理。
+try:
+    import fcntl as _fcntl
+except ImportError:
+    _fcntl = None
+try:
+    import msvcrt as _msvcrt
+except ImportError:
+    _msvcrt = None
+
+# Windows 控制台默认 GBK，日志含中文/emoji 时 print 会抛 UnicodeEncodeError；
+# 统一把标准输出切到 UTF-8 并降级替换无法编码的字符（文件日志本身已是 UTF-8）。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # ---- 必须在 import 引擎之前设置运行参数（引擎在 import 时读取这些环境变量）----
 os.environ.setdefault("RANDOM_SIGNIN", "false")          # 守护内不随机延时
@@ -113,13 +131,77 @@ def _write_json(path, obj, mode=None):
         return False
 
 
-def acquire_lock():
+def _clean_stale_lock():
+    """兜底路径：清理超过 2 小时的陈旧 O_EXCL 锁（崩溃残留不会永久阻塞）。"""
     try:
-        fd = open(LOCK_FILE, "w")
-        fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return fd
+        if time.time() - os.path.getmtime(LOCK_FILE) > 7200:
+            os.remove(LOCK_FILE)
+    except Exception:
+        pass
+
+
+def acquire_lock():
+    """跨平台单实例锁：返回持有句柄（文件对象或 int fd）；已有实例返回 None。"""
+    fd = None
+    if _fcntl is not None:
+        try:
+            fd = open(LOCK_FILE, "a+")
+            _fcntl.lockf(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+            return fd
+        except Exception:
+            if fd is not None:
+                try:
+                    fd.close()
+                except Exception:
+                    pass
+            return None
+    if _msvcrt is not None:
+        try:
+            fd = open(LOCK_FILE, "a+")
+            fd.seek(0, os.SEEK_END)
+            if fd.tell() == 0:
+                fd.write("\0")   # msvcrt.locking 要求锁区所在字节已存在
+                fd.flush()
+            fd.seek(0)
+            _msvcrt.locking(fd.fileno(), _msvcrt.LK_NBLCK, 1)
+            return fd
+        except Exception:
+            if fd is not None:
+                try:
+                    fd.close()
+                except Exception:
+                    pass
+            return None
+    _clean_stale_lock()
+    try:
+        return os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except Exception:
         return None
+
+
+def release_lock(fd):
+    """释放 acquire_lock 返回的句柄；任何异常都吞掉，不影响主流程收尾。"""
+    if fd is None:
+        return
+    try:
+        if isinstance(fd, int):
+            os.close(fd)
+            try:
+                os.remove(LOCK_FILE)
+            except Exception:
+                pass
+            return
+        if _fcntl is not None:
+            _fcntl.lockf(fd, _fcntl.LOCK_UN)
+        elif _msvcrt is not None:
+            try:
+                fd.seek(0)
+                _msvcrt.locking(fd.fileno(), _msvcrt.LK_UNLCK, 1)
+            except Exception:
+                pass
+        fd.close()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -310,8 +392,4 @@ if __name__ == "__main__":
     try:
         main()
     finally:
-        try:
-            fcntl.lockf(fd, fcntl.LOCK_UN)
-            fd.close()
-        except Exception:
-            pass
+        release_lock(fd)

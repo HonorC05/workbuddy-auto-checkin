@@ -7,6 +7,9 @@ checkin-rt.json
 chat_model.json
 auto_state.json
 auto.lock
+watch.pid
+daemon.pid
+upstream_*.json
 
 # 这些路径默认在用户家目录 ~/.workbuddy，但以防万一也忽略
 .workbuddy/
